@@ -609,6 +609,38 @@ class RequestParamsParsing < BaseRequestTest
     request = stub_request("REQUEST_URI" => "foo")
     assert_equal({}, request.query_parameters)
   end
+
+  # partially mimics https://github.com/rack/rack/blob/249dd785625f0cbe617d3144401de90ecf77025a/test/spec_multipart.rb#L114
+  test "request_parameters raises BadRequest when content length lower than actual data length for a multipart request" do
+    request = stub_request(
+      "CONTENT_TYPE" => "multipart/form-data; boundary=AaB03x",
+      "CONTENT_LENGTH" => "9", # lower than data length
+      "REQUEST_METHOD" => "POST",
+      "rack.input" => StringIO.new("0123456789")
+    )
+
+    err = assert_raises(ActionController::BadRequest) do
+      request.request_parameters
+    end
+
+    # original error message is Rack::Multipart::EmptyContentError for rack > 3 otherwise EOFError
+    assert_match "Invalid request parameters:", err.message
+  end
+
+  test "request_parameters raises BadRequest when content length is higher than actual data length" do
+    request = stub_request(
+      "CONTENT_TYPE" => "multipart/form-data; boundary=AaB03x",
+      "CONTENT_LENGTH" => "11", # higher than data length
+      "REQUEST_METHOD" => "POST",
+      "rack.input" => StringIO.new("0123456789")
+    )
+
+    err = assert_raises(ActionController::BadRequest) do
+      request.request_parameters
+    end
+
+    assert_equal "Invalid request parameters: bad content body", err.message
+  end
 end
 
 class RequestRewind < BaseRequestTest
@@ -1015,13 +1047,13 @@ class RequestMimeType < BaseRequestTest
 
     assert_equal(Mime[:xml], request.content_mime_type)
     assert_equal("application/xml", request.media_type)
-    assert_deprecated do
+    assert_deprecated(ActionDispatch.deprecator) do
       assert_nil(request.content_charset)
     end
-    assert_deprecated do
+    assert_deprecated(ActionDispatch.deprecator) do
       assert_equal({}, request.media_type_params)
     end
-    assert_deprecated do
+    assert_deprecated(ActionDispatch.deprecator) do
       assert_equal("application/xml", request.content_type)
     end
   ensure
@@ -1254,6 +1286,18 @@ class RequestParameterFilter < BaseRequestTest
     path = request.filtered_path
     assert_equal request.script_name + "/authenticate?secret", path
   end
+
+  test "parameter_filter returns the same instance of ActiveSupport::ParameterFilter" do
+    request = stub_request(
+      "action_dispatch.parameter_filter" => [:secret]
+    )
+
+    filter = request.parameter_filter
+
+    assert_kind_of ActiveSupport::ParameterFilter, filter
+    assert_equal({ "secret" => "[FILTERED]", "something" => "bar" }, filter.filter("secret" => "foo", "something" => "bar"))
+    assert_same filter, request.parameter_filter
+  end
 end
 
 class RequestEtag < BaseRequestTest
@@ -1297,7 +1341,7 @@ class RequestEtag < BaseRequestTest
     assert_equal header, request.if_none_match
     assert_equal expected, request.if_none_match_etags
     expected.each do |etag|
-      assert request.etag_matches?(etag), etag
+      assert request.etag_matches?(etag), "Etag #{etag} did not match HTTP_IF_NONE_MATCH values"
     end
   end
 end

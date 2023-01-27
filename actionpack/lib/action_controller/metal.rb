@@ -186,11 +186,13 @@ module ActionController
     end
 
     def response_body=(body)
-      body = [body] unless body.nil? || body.respond_to?(:each)
-      response.reset_body!
-      return unless body
-      response.body = body
-      super
+      if body
+        body = [body] if body.is_a?(String)
+        response.body = body
+        super
+      else
+        response.reset_body!
+      end
     end
 
     # Tests if render or redirect has already happened.
@@ -207,7 +209,20 @@ module ActionController
     end
 
     def set_response!(response) # :nodoc:
+      if @_response
+        _, _, body = @_response
+        body.close if body.respond_to?(:close)
+      end
+
       @_response = response
+    end
+
+    # Assign the response and mark it as committed. No further processing will occur.
+    def response=(response)
+      set_response!(response)
+
+      # Force `performed?` to return true:
+      @_response_body = true
     end
 
     def set_request!(request) # :nodoc:

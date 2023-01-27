@@ -99,13 +99,14 @@ end
 
         # We need to dance around minitest autorun, though.
         require "minitest"
-        Minitest.instance_eval do
-          alias _original_autorun autorun
+        Minitest.singleton_class.class_eval do
+          alias_method :_original_autorun, :autorun
           def autorun
             # no-op
           end
           require "cases/helper"
-          alias autorun _original_autorun
+          alias_method :autorun, :autorun # suppress redefinition warning
+          alias_method :autorun, :_original_autorun
         end
 
         failing_files = []
@@ -239,8 +240,8 @@ namespace :db do
     desc "Build the PostgreSQL test databases"
     task :build do
       config = ARTest.config["connections"]["postgresql"]
-      %x( createdb -E UTF8 -T template0 #{config["arunit"]["database"]} )
-      %x( createdb -E UTF8 -T template0 #{config["arunit2"]["database"]} )
+      %x( createdb -E UTF8 -T template0 #{config["arunit"]["database"]} --lc-collate en_US.UTF-8 )
+      %x( createdb -E UTF8 -T template0 #{config["arunit2"]["database"]} --lc-collate en_US.UTF-8 )
     end
 
     desc "Drop the PostgreSQL test databases"

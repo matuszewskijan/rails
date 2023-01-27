@@ -207,9 +207,11 @@ class ActiveStorage::ManyAttachedTest < ActiveSupport::TestCase
 
   test "attaching new blobs within a transaction with append_on_assign config uploads all the files" do
     append_on_assign do
-      ActiveRecord::Base.transaction do
-        @user.highlights.attach fixture_file_upload("racecar.jpg")
-        @user.highlights.attach fixture_file_upload("video.mp4")
+      assert_deprecated(ActiveStorage.deprecator) do
+        ActiveRecord::Base.transaction do
+          @user.highlights.attach fixture_file_upload("racecar.jpg")
+          @user.highlights.attach fixture_file_upload("video.mp4")
+        end
       end
 
       assert_equal "racecar.jpg", @user.highlights.first.filename.to_s
@@ -221,10 +223,12 @@ class ActiveStorage::ManyAttachedTest < ActiveSupport::TestCase
 
   test "attaching new blobs within a transaction with append_on_assign config create the exact amount of records" do
     append_on_assign do
-      assert_difference -> { ActiveStorage::Blob.count }, +2 do
-        ActiveRecord::Base.transaction do
-          @user.highlights.attach fixture_file_upload("racecar.jpg")
-          @user.highlights.attach fixture_file_upload("video.mp4")
+      assert_deprecated(ActiveStorage.deprecator) do
+        assert_difference -> { ActiveStorage::Blob.count }, +2 do
+          ActiveRecord::Base.transaction do
+            @user.highlights.attach fixture_file_upload("racecar.jpg")
+            @user.highlights.attach fixture_file_upload("video.mp4")
+          end
         end
       end
 
@@ -410,7 +414,7 @@ class ActiveStorage::ManyAttachedTest < ActiveSupport::TestCase
 
   test "updating an existing record with attachments when appending on assign" do
     append_on_assign do
-      assert_deprecated do
+      assert_deprecated(ActiveStorage.deprecator) do
         @user.highlights.attach create_blob(filename: "funky.jpg"), create_blob(filename: "town.jpg")
 
         assert_difference -> { @user.reload.highlights.count }, +2 do
@@ -601,7 +605,7 @@ class ActiveStorage::ManyAttachedTest < ActiveSupport::TestCase
         Calling `purge` from `highlights_attachments` is deprecated and will be removed in Rails 7.1.
         To migrate to Rails 7.1's behavior call `purge` from `highlights` instead: `highlights.purge`.
       MSG
-      assert_deprecated(message) do
+      assert_deprecated(message, ActiveStorage.deprecator) do
         assert_changes -> { @user.updated_at } do
           @user.highlights_attachments.purge
         end
@@ -696,7 +700,7 @@ class ActiveStorage::ManyAttachedTest < ActiveSupport::TestCase
         Calling `purge_later` from `highlights_attachments` is deprecated and will be removed in Rails 7.1.
         To migrate to Rails 7.1's behavior call `purge_later` from `highlights` instead: `highlights.purge_later`.
       MSG
-      assert_deprecated(message) do
+      assert_deprecated(message, ActiveStorage.deprecator) do
         perform_enqueued_jobs do
           assert_changes -> { @user.updated_at } do
             @user.highlights_attachments.purge_later
@@ -846,26 +850,40 @@ class ActiveStorage::ManyAttachedTest < ActiveSupport::TestCase
     end
   end
 
-  test "attaching blobs to a record returns the attachments" do
+  test "attaching blobs to a persisted, unchanged, and valid record, returns the attachments" do
     @user.highlights.attach create_blob(filename: "racecar.jpg")
-    highlights = @user.highlights.attach create_blob(filename: "funky.jpg"), create_blob(filename: "town.jpg")
-    assert_instance_of ActiveStorage::Attached::Many, highlights
-    assert_equal 3, @user.highlights.count
-    assert_equal 3, highlights.count
-    assert_equal highlights.name.to_s, @user.highlights.name.to_s
-    assert_equal highlights.first.key.to_s, @user.highlights.first.key.to_s
-    assert_equal highlights.first.filename.to_s, @user.highlights.first.filename.to_s
-    assert_equal highlights.second.key.to_s, @user.highlights.second.key.to_s
-    assert_equal highlights.second.filename.to_s, @user.highlights.second.filename.to_s
-    assert_equal highlights.third.key.to_s, @user.highlights.third.key.to_s
-    assert_equal highlights.third.filename.to_s, @user.highlights.third.filename.to_s
+    return_value = @user.highlights.attach create_blob(filename: "funky.jpg"), create_blob(filename: "town.jpg")
+    assert_equal @user.highlights, return_value
+  end
+
+  test "attaching blobs to a persisted, unchanged, and invalid record, returns nil" do
+    @user.update_attribute(:name, nil)
+    assert_not @user.valid?
+
+    @user.highlights.attach create_blob(filename: "racecar.jpg")
+    return_value = @user.highlights.attach create_blob(filename: "funky.jpg"), create_blob(filename: "town.jpg")
+    assert_nil return_value
+  end
+
+  test "attaching blobs to a changed record, returns the attachments" do
+    @user.name = "Tina"
+    @user.highlights.attach create_blob(filename: "racecar.jpg")
+    return_value = @user.highlights.attach create_blob(filename: "funky.jpg"), create_blob(filename: "town.jpg")
+    assert_equal @user.highlights, return_value
+  end
+
+  test "attaching blobs to a non persisted record, returns the attachments" do
+    user = User.new(name: "John")
+    user.highlights.attach create_blob(filename: "racecar.jpg")
+    return_value = user.highlights.attach create_blob(filename: "funky.jpg"), create_blob(filename: "town.jpg")
+    assert_equal user.highlights, return_value
   end
 
   test "raises error when global service configuration is missing" do
     Rails.configuration.active_storage.stub(:service, nil) do
       error = assert_raises RuntimeError do
         User.class_eval do
-          has_one_attached :featured_photos
+          has_many_attached :featured_photos
         end
       end
 
@@ -893,7 +911,7 @@ class ActiveStorage::ManyAttachedTest < ActiveSupport::TestCase
     assert_equal 67, image.height
   end
 
-  test "raises error when unknown variant name is used" do
+  test "raises error when unknown variant name is used to generate variant" do
     @user.highlights_with_variants.attach fixture_file_upload("racecar.jpg")
 
     error = assert_raises ArgumentError do
@@ -903,9 +921,49 @@ class ActiveStorage::ManyAttachedTest < ActiveSupport::TestCase
     assert_match(/Cannot find variant :unknown for User#highlights_with_variants/, error.message)
   end
 
+  test "creating preview by variation name" do
+    @user.highlights_with_variants.attach fixture_file_upload("report.pdf")
+    preview = @user.highlights_with_variants.first.preview(:thumb).processed
+
+    image = read_image(preview.send(:variant))
+    assert_equal "PNG", image.type
+    assert_equal 77, image.width
+    assert_equal 100, image.height
+  end
+
+  test "raises error when unknown variant name is used to generate preview" do
+    @user.highlights_with_variants.attach fixture_file_upload("report.pdf")
+
+    error = assert_raises ArgumentError do
+      @user.highlights_with_variants.first.preview(:unknown).processed
+    end
+
+    assert_match(/Cannot find variant :unknown for User#highlights_with_variants/, error.message)
+  end
+
+  test "creating representation by variation name" do
+    @user.highlights_with_variants.attach fixture_file_upload("racecar.jpg")
+    variant = @user.highlights_with_variants.first.representation(:thumb).processed
+
+    image = read_image(variant)
+    assert_equal "JPEG", image.type
+    assert_equal 100, image.width
+    assert_equal 67, image.height
+  end
+
+  test "raises error when unknown variant name is used to generate representation" do
+    @user.highlights_with_variants.attach fixture_file_upload("racecar.jpg")
+
+    error = assert_raises ArgumentError do
+      @user.highlights_with_variants.first.representation(:unknown).processed
+    end
+
+    assert_match(/Cannot find variant :unknown for User#highlights_with_variants/, error.message)
+  end
+
   test "successfully attaches new blobs and destroys attachments marked for destruction via nested attributes" do
     append_on_assign do
-      assert_deprecated do
+      assert_deprecated(ActiveStorage.deprecator) do
         town_blob = create_blob(filename: "town.jpg")
         @user.highlights.attach(town_blob)
         @user.reload
@@ -933,7 +991,7 @@ class ActiveStorage::ManyAttachedTest < ActiveSupport::TestCase
         Using association setter would result in purging the existing attached attachments and replacing them with new ones.
       MSG
 
-      assert_deprecated(message) do
+      assert_deprecated(message, ActiveStorage.deprecator) do
         @user.update! highlights: [create_blob(filename: "whenever.jpg")]
       end
     end

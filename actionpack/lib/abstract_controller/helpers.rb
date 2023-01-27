@@ -117,13 +117,14 @@ module AbstractController
       #   class ApplicationController < ActionController::Base
       #     helper_method :current_user, :logged_in?
       #
-      #     def current_user
-      #       @current_user ||= User.find_by(id: session[:user])
-      #     end
+      #     private
+      #       def current_user
+      #         @current_user ||= User.find_by(id: session[:user])
+      #       end
       #
-      #     def logged_in?
-      #       current_user != nil
-      #     end
+      #       def logged_in?
+      #         current_user != nil
+      #       end
       #   end
       #
       # In a view:
@@ -169,7 +170,7 @@ module AbstractController
       # The last two assume that <tt>"foo".camelize</tt> returns "Foo".
       #
       # When strings or symbols are passed, the method finds the actual module
-      # object using +String#constantize+. Therefore, if the module has not been
+      # object using String#constantize. Therefore, if the module has not been
       # yet loaded, it has to be autoloadable, which is normally the case.
       #
       # Namespaces are supported. The following calls include +Foo::BarHelper+:

@@ -1,3 +1,63 @@
+*   Don't double log the `job` when using `ActiveRecord::QueryLog`
+
+    Previously if you set `config.active_record.query_log_tags` to an array that included
+    `:job`, the job name would get logged twice. This bug has been fixed.
+
+    *Alex Ghiculescu*
+
+*   Add support for Sidekiq's transaction-aware client
+
+    *Jonathan del Strother*
+
+*   Remove QueAdapter from Active Job.
+
+    After maintaining Active Job QueAdapter by Rails and Que side
+    to support Ruby 3 keyword arguments and options provided as top level keywords,
+    it is quite difficult to maintain it this way.
+
+    Active Job Que adapter can be included in the future version of que gem itself.
+
+    *Yasuo Honda*
+
+*   Fix BigDecimal (de)serialization for adapters using JSON.
+
+    Previously, BigDecimal was listed as not needing a serializer.  However,
+    when used with an adapter storing the job arguments as JSON, it would get
+    serialized as a simple String, resulting in deserialization also producing
+    a String (instead of a BigDecimal).
+
+    By using a serializer, we ensure the round trip is safe.
+
+    To ensure applications using BigDecimal job arguments are not subject to
+    race conditions during deployment (where a replica running a version of
+    Rails without BigDecimalSerializer fails to deserialize an argument
+    serialized with it), `ActiveJob.use_big_decimal_serializer` is disabled by
+    default, and can be set to true in a following deployment..
+
+    *Sam Bostock*
+
+*   Preserve full-precision `enqueued_at` timestamps for serialized jobs,
+    allowing more accurate reporting of how long a job spent waiting in the
+    queue before it was performed.
+
+    Retains IS08601 format compatibility.
+
+    *Jeremy Daer*
+
+*   Add `--parent` option to job generator to specify parent class of job.
+
+    Example:
+
+    `bin/rails g job process_payment --parent=payment_job` generates:
+
+    ```ruby
+    class ProcessPaymentJob < PaymentJob
+      # ...
+    end
+    ```
+
+    *Gannon McGibbon*
+
 *   Add more detailed description to job generator.
 
     *Gannon McGibbon*
@@ -8,7 +68,7 @@
 
     *Jonathan Hefner*
 
-*   Update `ActiveJob::QueueAdapters::QueAdapter` te remove deprecation warning
+*   Update `ActiveJob::QueueAdapters::QueAdapter` to remove deprecation warning.
 
     Remove a deprecation warning introduced in que 1.2 to prepare for changes in
     que 2.0 necessary for Ruby 3 compatibility.

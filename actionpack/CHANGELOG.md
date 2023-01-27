@@ -1,3 +1,117 @@
+*   Only use HostAuthorization middleware if `config.hosts` is not empty
+
+    *Hartley McGuire*
+
+*   Allow raising an error when a callback's only/unless symbols aren't existing methods.
+
+    When `before_action :callback, only: :action_name` is declared on a controller that doesn't respond to `action_name`, raise an exception at request time. This is a safety measure to ensure that typos or forgetfulness don't prevent a crucial callback from being run when it should.
+
+    For new applications, raising an error for undefined actions is turned on by default. If you do not want to opt-in to this behavior set `config.action_pack.raise_on_missing_callback_actions` to `false` in your application configuration. See #43487 for more details.
+
+    *Jess Bees*
+
+*   Allow cookie options[:domain] to accept a proc to set the cookie domain on a more flexible per-request basis
+
+    *RobL*
+
+*   When a host is not specified for an `ActionController::Renderer`'s env,
+    the host and related options will now be derived from the routes'
+    `default_url_options` and `ActionDispatch::Http::URL.secure_protocol`.
+
+    This means that for an application with a configuration like:
+
+      ```ruby
+      Rails.application.default_url_options = { host: "rubyonrails.org" }
+      Rails.application.config.force_ssl = true
+      ```
+
+    rendering a URL like:
+
+      ```ruby
+      ApplicationController.renderer.render inline: "<%= blog_url %>"
+      ```
+
+    will now return `"https://rubyonrails.org/blog"` instead of
+    `"http://example.org/blog"`.
+
+    *Jonathan Hefner*
+
+*   Add details of cookie name and size to `CookieOverflow` exception.
+
+    *Andy Waite*
+
+*   Don't double log the `controller`, `action`, or `namespaced_controller` when using `ActiveRecord::QueryLog`
+
+    Previously if you set `config.active_record.query_log_tags` to an array that included
+    `:controller`, `:namespaced_controller`, or `:action`, that item would get logged twice.
+    This bug has been fixed.
+
+    *Alex Ghiculescu*
+
+*   Add the following permissions policy directives: `hid`, `idle-detection`, `screen-wake-lock`,
+    `serial`, `sync-xhr`, `web-share`.
+
+    *Guillaume Cabanel*
+
+*   The `speaker`, `vibrate`, and `vr` permissions policy directives are now
+    deprecated.
+
+    There is no browser support for these directives, and no plan for browser
+    support in the future. You can just remove these directives from your
+    application.
+
+    *Jonathan Hefner*
+
+*   Added the `:status` option to `assert_redirected_to` to specify the precise
+    HTTP status of the redirect. Defaults to `:redirect` for backwards
+    compatibility.
+
+    *Jon Dufresne*
+
+*   Rescue `JSON::ParserError` in Cookies JSON deserializer to discards marshal dumps:
+
+    Without this change, if `action_dispatch.cookies_serializer` is set to `:json` and
+    the app tries to read a `:marshal` serialized cookie, it would error out which wouldn't
+    clear the cookie and force app users to manually clear it in their browser.
+
+    (See #45127 for original bug discussion)
+
+    *Nathan Bardoux*
+
+*   Add `HTTP_REFERER` when following redirects on integration tests
+
+    This makes `follow_redirect!` a closer simulation of what happens in a real browser
+
+    *Felipe Sateler*
+
+*   Added `exclude?` method to `ActionController::Parameters`.
+
+    *Ian Neubert*
+
+*   Rescue `EOFError` exception from `rack` on a multipart request.
+
+    *Nikita Vasilevsky*
+
+*   Log redirects from routes the same way as redirects from controllers.
+
+    *Dennis Paagman*
+
+*   Prevent `ActionDispatch::ServerTiming` from overwriting existing values in `Server-Timing`.
+    Previously, if another middleware down the chain set `Server-Timing` header,
+    it would overwritten by `ActionDispatch::ServerTiming`.
+
+    *Jakub Malinowski*
+
+*   Allow opting out of the `SameSite` cookie attribute when setting a cookie.
+
+    You can opt out of `SameSite` by passing `same_site: nil`.
+
+    `cookies[:foo] = { value: "bar", same_site: nil }`
+
+    Previously, this incorrectly set the `SameSite` attribute to the value of the `cookies_same_site_protection` setting.
+
+    *Alex Ghiculescu*
+
 *   Allow using `helper_method`s in `content_security_policy` and `permissions_policy`
 
     Previously you could access basic helpers (defined in helper modules), but not

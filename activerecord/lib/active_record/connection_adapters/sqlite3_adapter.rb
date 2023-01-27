@@ -15,36 +15,12 @@ require "sqlite3"
 
 module ActiveRecord
   module ConnectionHandling # :nodoc:
+    def sqlite3_adapter_class
+      ConnectionAdapters::SQLite3Adapter
+    end
+
     def sqlite3_connection(config)
-      config = config.symbolize_keys
-
-      # Require database.
-      unless config[:database]
-        raise ArgumentError, "No database file specified. Missing argument: database"
-      end
-
-      # Allow database path relative to Rails.root, but only if the database
-      # path is not the special path that tells sqlite to build a database only
-      # in memory.
-      if ":memory:" != config[:database] && !config[:database].to_s.start_with?("file:")
-        config[:database] = File.expand_path(config[:database], Rails.root) if defined?(Rails.root)
-        dirname = File.dirname(config[:database])
-        Dir.mkdir(dirname) unless File.directory?(dirname)
-      end
-
-      config[:strict] = ConnectionAdapters::SQLite3Adapter.strict_strings_by_default unless config.key?(:strict)
-      db = SQLite3::Database.new(
-        config[:database].to_s,
-        config.merge(results_as_hash: true)
-      )
-
-      ConnectionAdapters::SQLite3Adapter.new(db, logger, nil, config)
-    rescue Errno::ENOENT => error
-      if error.message.include?("No such file or directory")
-        raise ActiveRecord::NoDatabaseError
-      else
-        raise
-      end
+      sqlite3_adapter_class.new(config)
     end
   end
 
@@ -57,6 +33,28 @@ module ActiveRecord
     # * <tt>:database</tt> - Path to the database file.
     class SQLite3Adapter < AbstractAdapter
       ADAPTER_NAME = "SQLite"
+
+      class << self
+        def new_client(config)
+          ::SQLite3::Database.new(config[:database].to_s, config)
+        rescue Errno::ENOENT => error
+          if error.message.include?("No such file or directory")
+            raise ActiveRecord::NoDatabaseError
+          else
+            raise
+          end
+        end
+
+        def dbconsole(config, options = {})
+          args = []
+
+          args << "-#{options[:mode]}" if options[:mode]
+          args << "-header" if options[:header]
+          args << File.expand_path(config.database, Rails.respond_to?(:root) ? Rails.root : nil)
+
+          find_cmd_and_exec("sqlite3", *args)
+        end
+      end
 
       include SQLite3::Quoting
       include SQLite3::SchemaStatements
@@ -96,19 +94,39 @@ module ActiveRecord
           end
       end
 
-      def initialize(connection, logger, connection_options, config)
-        @memory_database = config[:database] == ":memory:"
-        super(connection, logger, config)
+      def initialize(...)
+        super
+
+        @memory_database = false
+        case @config[:database].to_s
+        when ""
+          raise ArgumentError, "No database file specified. Missing argument: database"
+        when ":memory:"
+          @memory_database = true
+        when /\Afile:/
+        else
+          # Otherwise we have a path relative to Rails.root
+          @config[:database] = File.expand_path(@config[:database], Rails.root) if defined?(Rails.root)
+          dirname = File.dirname(@config[:database])
+          unless File.directory?(dirname)
+            begin
+              Dir.mkdir(dirname)
+            rescue Errno::ENOENT => error
+              if error.message.include?("No such file or directory")
+                raise ActiveRecord::NoDatabaseError
+              else
+                raise
+              end
+            end
+          end
+        end
+
+        @config[:strict] = ConnectionAdapters::SQLite3Adapter.strict_strings_by_default unless @config.key?(:strict)
+        @connection_parameters = @config.merge(database: @config[:database].to_s, results_as_hash: true)
       end
 
-      def self.database_exists?(config)
-        config = config.symbolize_keys
-        if config[:database] == ":memory:"
-          true
-        else
-          database_file = defined?(Rails.root) ? File.expand_path(config[:database], Rails.root) : config[:database]
-          File.exist?(database_file)
-        end
+      def database_exists?
+        @config[:database] == ":memory:" || File.exist?(@config[:database].to_s)
       end
 
       def supports_ddl_transactions?
@@ -171,27 +189,18 @@ module ActiveRecord
       end
 
       def active?
-        !@raw_connection.closed?
+        @raw_connection && !@raw_connection.closed?
       end
 
-      def reconnect!(restore_transactions: false)
-        @lock.synchronize do
-          if active?
-            @raw_connection.rollback rescue nil
-          else
-            connect
-          end
-
-          super
-        end
-      end
       alias :reset! :reconnect!
 
       # Disconnects from the database if already connected. Otherwise, this
       # method does nothing.
       def disconnect!
         super
-        @raw_connection.close rescue nil
+
+        @raw_connection&.close rescue nil
+        @raw_connection = nil
       end
 
       def supports_index_sort_order?
@@ -204,7 +213,7 @@ module ActiveRecord
 
       # Returns the current database encoding format as a string, e.g. 'UTF-8'
       def encoding
-        @raw_connection.encoding.to_s
+        any_raw_connection.encoding.to_s
       end
 
       def supports_explain?
@@ -323,6 +332,19 @@ module ActiveRecord
         rename_column_indexes(table_name, column.name, new_column_name)
       end
 
+      def add_timestamps(table_name, **options)
+        options[:null] = false if options[:null].nil?
+
+        if !options.key?(:precision)
+          options[:precision] = 6
+        end
+
+        alter_table(table_name) do |definition|
+          definition.column :created_at, :datetime, **options
+          definition.column :updated_at, :datetime, **options
+        end
+      end
+
       def add_reference(table_name, ref_name, **options) # :nodoc:
         super(table_name, ref_name, type: :integer, **options)
       end
@@ -364,7 +386,7 @@ module ActiveRecord
       end
 
       def get_database_version # :nodoc:
-        SQLite3Adapter::Version.new(query_value("SELECT sqlite_version(*)"))
+        SQLite3Adapter::Version.new(query_value("SELECT sqlite_version(*)", "SCHEMA"))
       end
 
       def check_version # :nodoc:
@@ -422,6 +444,9 @@ module ActiveRecord
           # Numeric types
           when /\A-?\d+(\.\d*)?\z/
             $&
+          # Binary columns
+          when /x'(.*)'/
+            [ $1 ].pack("H*")
           else
             # Anything else is blank or some function
             # and we can't know the value of that, so return nil.
@@ -497,8 +522,14 @@ module ActiveRecord
                  options[:rename][column.name.to_sym] ||
                  column.name) : column.name
 
-              @definition.column(column_name, column.type,
-                limit: column.limit, default: column.default,
+              if column.has_default?
+                type = lookup_cast_type_from_column(column)
+                default = type.deserialize(column.default)
+              end
+
+              column_type = column.bigint? ? :bigint : column.type
+              @definition.column(column_name, column_type,
+                limit: column.limit, default: default,
                 precision: column.precision, scale: column.scale,
                 null: column.null, collation: column.collation,
                 primary_key: column_name == from_primary_key
@@ -622,10 +653,15 @@ module ActiveRecord
         end
 
         def connect
-          @raw_connection = ::SQLite3::Database.new(
-            @config[:database].to_s,
-            @config.merge(results_as_hash: true)
-          )
+          @raw_connection = self.class.new_client(@connection_parameters)
+        end
+
+        def reconnect
+          if active?
+            @raw_connection.rollback rescue nil
+          else
+            connect
+          end
         end
 
         def configure_connection

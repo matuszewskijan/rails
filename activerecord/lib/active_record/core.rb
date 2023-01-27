@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "active_support/core_ext/enumerable"
+require "active_support/core_ext/module/delegation"
 require "active_support/core_ext/string/filters"
 require "active_support/parameter_filter"
 require "concurrent/map"
@@ -19,11 +20,20 @@ module ActiveRecord
       # retrieved on both a class and instance level by calling +logger+.
       class_attribute :logger, instance_writer: false
 
-      ##
-      # :singleton-method:
-      #
-      # Specifies the job used to destroy associations in the background
-      class_attribute :destroy_association_async_job, instance_writer: false, instance_predicate: false, default: false
+      class_attribute :_destroy_association_async_job, instance_accessor: false, default: "ActiveRecord::DestroyAssociationAsyncJob"
+
+      # The job class used to destroy associations in the background.
+      def self.destroy_association_async_job
+        if _destroy_association_async_job.is_a?(String)
+          self._destroy_association_async_job = _destroy_association_async_job.constantize
+        end
+        _destroy_association_async_job
+      rescue NameError => error
+        raise NameError, "Unable to load destroy_association_async_job: #{error.message}"
+      end
+
+      singleton_class.alias_method :destroy_association_async_job=, :_destroy_association_async_job=
+      delegate :destroy_association_async_job, to: :class
 
       ##
       # :singleton-method:
@@ -43,19 +53,19 @@ module ActiveRecord
       #
       #   development:
       #     adapter: sqlite3
-      #     database: db/development.sqlite3
+      #     database: storage/development.sqlite3
       #
       #   production:
       #     adapter: sqlite3
-      #     database: db/production.sqlite3
+      #     database: storage/production.sqlite3
       #
       # ...would result in ActiveRecord::Base.configurations to look like this:
       #
       #   #<ActiveRecord::DatabaseConfigurations:0x00007fd1acbdf800 @configurations=[
       #     #<ActiveRecord::DatabaseConfigurations::HashConfig:0x00007fd1acbded10 @env_name="development",
-      #       @name="primary", @config={adapter: "sqlite3", database: "db/development.sqlite3"}>,
+      #       @name="primary", @config={adapter: "sqlite3", database: "storage/development.sqlite3"}>,
       #     #<ActiveRecord::DatabaseConfigurations::HashConfig:0x00007fd1acbdea90 @env_name="production",
-      #       @name="primary", @config={adapter: "sqlite3", database: "db/production.sqlite3"}>
+      #       @name="primary", @config={adapter: "sqlite3", database: "storage/production.sqlite3"}>
       #   ]>
       def self.configurations=(config)
         @@configurations = ActiveRecord::DatabaseConfigurations.new(config)
@@ -299,7 +309,7 @@ module ActiveRecord
       ).each do |attr|
         module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
           def #{attr}
-            ActiveSupport::Deprecation.warn(<<~MSG)
+            ActiveRecord.deprecator.warn(<<~MSG)
               ActiveRecord::Base.#{attr} is deprecated and will be removed in Rails 7.1.
               Use `ActiveRecord.#{attr}` instead.
             MSG
@@ -307,7 +317,7 @@ module ActiveRecord
           end
 
           def #{attr}=(value)
-            ActiveSupport::Deprecation.warn(<<~MSG)
+            ActiveRecord.deprecator.warn(<<~MSG)
               ActiveRecord::Base.#{attr}= is deprecated and will be removed in Rails 7.1.
               Use `ActiveRecord.#{attr}=` instead.
             MSG
@@ -507,7 +517,8 @@ module ActiveRecord
     # only, not its associations. The extent of a "deep" copy is application
     # specific and is therefore left to the application to implement according
     # to its need.
-    # The dup method does not preserve the timestamps (created|updated)_(at|on).
+    # The dup method does not preserve the timestamps (created|updated)_(at|on)
+    # and locking column.
 
     ##
     def initialize_dup(other) # :nodoc:

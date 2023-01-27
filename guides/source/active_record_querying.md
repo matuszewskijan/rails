@@ -657,6 +657,18 @@ SELECT * FROM books WHERE (books.created_at BETWEEN '2008-12-21 00:00:00' AND '2
 
 This demonstrates a shorter syntax for the examples in [Array Conditions](#array-conditions)
 
+Beginless and endless ranges are supported and can be used to build less/greater than conditions.
+
+```ruby
+Book.where(created_at: (Time.now.midnight - 1.day)..)
+```
+
+This would generate SQL like:
+
+```sql
+SELECT * FROM books WHERE books.created_at >= '2008-12-21 00:00:00'
+```
+
 #### Subset Conditions
 
 If you want to find records using the `IN` expression you can pass an array to the conditions hash:
@@ -866,8 +878,8 @@ will return instead a maximum of 5 customers beginning with the 31st. The SQL lo
 SELECT * FROM customers LIMIT 5 OFFSET 30
 ```
 
-Group
------
+Grouping
+--------
 
 To apply a `GROUP BY` clause to the SQL fired by the finder, you can use the [`group`][] method.
 
@@ -887,7 +899,7 @@ FROM orders
 GROUP BY created_at
 ```
 
-### Total of grouped items
+### Total of Grouped Items
 
 To get the total of grouped items on a single query, call [`count`][] after the `group`.
 
@@ -906,8 +918,7 @@ GROUP BY status
 
 [`count`]: https://api.rubyonrails.org/classes/ActiveRecord/Calculations.html#method-i-count
 
-Having
-------
+### HAVING Conditions
 
 SQL uses the `HAVING` clause to specify conditions on the `GROUP BY` fields. You can add the `HAVING` clause to the SQL fired by the `Model.find` by adding the [`having`][] method to the find.
 
@@ -1397,6 +1408,43 @@ LEFT OUTER JOIN reviews ON reviews.customer_id = customers.id GROUP BY customers
 Which means: "return all customers with their count of reviews, whether or not they
 have any reviews at all"
 
+### `where.associated` and `where.missing`
+
+The `associated` and `missing` query methods let you select a set of records
+based on the presence or absence of an association.
+
+To use `where.associated`:
+
+```ruby
+Customer.where.associated(:reviews)
+```
+
+Produces:
+
+```sql
+SELECT customers.* FROM customers
+INNER JOIN reviews ON reviews.customer_id = customers.id
+WHERE reviews.id IS NOT NULL
+```
+
+Which means "return all customers that have made at least one review".
+
+To use `where.missing`:
+
+```ruby
+Customer.where.missing(:reviews)
+```
+
+Produces:
+
+```sql
+SELECT customers.* FROM customers
+LEFT OUTER JOIN reviews ON reviews.customer_id = customers.id
+WHERE reviews.id IS NULL
+```
+
+Which means "return all customers that have not made any reviews".
+
 
 Eager Loading Associations
 --------------------------
@@ -1427,7 +1475,7 @@ The methods are:
 * [`preload`][]
 * [`eager_load`][]
 
-### includes
+### `includes`
 
 With `includes`, Active Record ensures that all of the specified associations are loaded using the minimum possible number of queries.
 
@@ -1503,7 +1551,7 @@ returned.
 NOTE: If an association is eager loaded as part of a join, any fields from a custom select clause will not be present on the loaded models.
 This is because it is ambiguous whether they should appear on the parent record, or the child.
 
-### preload
+### `preload`
 
 With `preload`, Active Record loads each specified association using one query per association.
 
@@ -1528,7 +1576,7 @@ SELECT authors.* FROM authors
 
 NOTE: The `preload` method uses an array, hash, or a nested hash of array/hash in the same way as the `includes` method to load any number of associations with a single `Model.find` call. However, unlike the `includes` method, it is not possible to specify conditions for preloaded associations.
 
-### eager_load
+### `eager_load`
 
 With `eager_load`, Active Record loads all specified associations using a `LEFT OUTER JOIN`.
 
@@ -1592,7 +1640,7 @@ end
 
 [`scope`]: https://api.rubyonrails.org/classes/ActiveRecord/Scoping/Named/ClassMethods.html#method-i-scope
 
-### Passing in arguments
+### Passing in Arguments
 
 Your scope can take arguments:
 
@@ -1624,7 +1672,7 @@ These methods will still be accessible on the association objects:
 irb> author.books.costs_more_than(100.10)
 ```
 
-### Using conditionals
+### Using Conditionals
 
 Your scope can utilize conditionals:
 
@@ -1646,7 +1694,7 @@ end
 
 However, there is one important caveat: A scope will always return an `ActiveRecord::Relation` object, even if the conditional evaluates to `false`, whereas a class method, will return `nil`. This can cause `NoMethodError` when chaining class methods with conditionals, if any of the conditionals return `false`.
 
-### Applying a default scope
+### Applying a Default Scope
 
 If we wish for a scope to be applied across all queries to the model we can use the
 [`default_scope`][] method within the model itself.
@@ -1708,7 +1756,7 @@ irb> Book.new
 
 [`default_scope`]: https://api.rubyonrails.org/classes/ActiveRecord/Scoping/Default/ClassMethods.html#method-i-default_scope
 
-### Merging of scopes
+### Merging of Scopes
 
 Just like `where` clauses, scopes are merged using `AND` conditions.
 
@@ -1809,7 +1857,7 @@ you get the instance method `find_by_first_name` for free from Active Record.
 If you also have a `locked` field on the `Customer` model, you also get `find_by_locked` method.
 
 You can specify an exclamation point (`!`) on the end of the dynamic finders
-to get them to raise an `ActiveRecord::RecordNotFound` error if they do not return any records, like `Customer.find_by_name!("Ryan")`
+to get them to raise an `ActiveRecord::RecordNotFound` error if they do not return any records, like `Customer.find_by_first_name!("Ryan")`
 
 If you want to find both by `first_name` and `orders_count`, you can chain these finders together by simply typing "`and`" between the fields.
 For example, `Customer.find_by_first_name_and_orders_count("Ryan", 5)`.
@@ -1883,7 +1931,7 @@ There are some examples below. This guide won't cover all the possibilities, jus
 When an Active Record method is called, the query is not immediately generated and sent to the database.
 The query is sent only when the data is actually needed. So each example below generates a single query.
 
-### Retrieving filtered data from multiple tables
+### Retrieving Filtered Data from Multiple Tables
 
 ```ruby
 Customer
@@ -1902,7 +1950,7 @@ INNER JOIN reviews
 WHERE (reviews.created_at > '2019-01-08')
 ```
 
-### Retrieving specific data from multiple tables
+### Retrieving Specific Data from Multiple Tables
 
 ```ruby
 Book
@@ -2267,14 +2315,14 @@ SELECT COUNT(DISTINCT customers.id) FROM customers
 
 assuming that Order has `enum status: [ :shipped, :being_packed, :cancelled ]`.
 
-### Count
+### `count`
 
 If you want to see how many records are in your model's table you could call `Customer.count` and that will return the number.
 If you want to be more specific and find all the customers with a title present in the database you can use `Customer.count(:title)`.
 
 For options, please see the parent section, [Calculations](#calculations).
 
-### Average
+### `average`
 
 If you want to see the average of a certain number in one of your tables you can call the [`average`][] method on the class that relates to the table. This method call will look something like this:
 
@@ -2288,7 +2336,7 @@ For options, please see the parent section, [Calculations](#calculations).
 
 [`average`]: https://api.rubyonrails.org/classes/ActiveRecord/Calculations.html#method-i-average
 
-### Minimum
+### `minimum`
 
 If you want to find the minimum value of a field in your table you can call the [`minimum`][] method on the class that relates to the table. This method call will look something like this:
 
@@ -2300,7 +2348,7 @@ For options, please see the parent section, [Calculations](#calculations).
 
 [`minimum`]: https://api.rubyonrails.org/classes/ActiveRecord/Calculations.html#method-i-minimum
 
-### Maximum
+### `maximum`
 
 If you want to find the maximum value of a field in your table you can call the [`maximum`][] method on the class that relates to the table. This method call will look something like this:
 
@@ -2312,7 +2360,7 @@ For options, please see the parent section, [Calculations](#calculations).
 
 [`maximum`]: https://api.rubyonrails.org/classes/ActiveRecord/Calculations.html#method-i-maximum
 
-### Sum
+### `sum`
 
 If you want to find the sum of a field for all records in your table you can call the [`sum`][] method on the class that relates to the table. This method call will look something like this:
 

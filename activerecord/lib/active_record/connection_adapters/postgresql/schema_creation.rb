@@ -86,6 +86,15 @@ module ActiveRecord
             change_column_sql
           end
 
+          def visit_ChangeColumnDefaultDefinition(o)
+            sql = +"ALTER COLUMN #{quote_column_name(o.column.name)} "
+            if o.default.nil?
+              sql << "DROP DEFAULT"
+            else
+              sql << "SET DEFAULT #{quote_default_expression(o.default, o.column)}"
+            end
+          end
+
           def add_column_options!(sql, options)
             if options[:collation]
               sql << " COLLATE \"#{options[:collation]}\""

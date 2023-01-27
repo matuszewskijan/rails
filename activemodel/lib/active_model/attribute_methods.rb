@@ -49,18 +49,17 @@ module ActiveModel
   #     end
   #
   #     private
+  #       def attribute_contrived?(attr)
+  #         true
+  #       end
   #
-  #     def attribute_contrived?(attr)
-  #       true
-  #     end
+  #       def clear_attribute(attr)
+  #         send("#{attr}=", nil)
+  #       end
   #
-  #     def clear_attribute(attr)
-  #       send("#{attr}=", nil)
-  #     end
-  #
-  #     def reset_attribute_to_default!(attr)
-  #       send("#{attr}=", 'Default Name')
-  #     end
+  #       def reset_attribute_to_default!(attr)
+  #         send("#{attr}=", 'Default Name')
+  #       end
   #   end
   module AttributeMethods
     extend ActiveSupport::Concern
@@ -95,10 +94,9 @@ module ActiveModel
       #     define_attribute_methods :name
       #
       #     private
-      #
-      #     def clear_attribute(attr)
-      #       send("#{attr}=", nil)
-      #     end
+      #       def clear_attribute(attr)
+      #         send("#{attr}=", nil)
+      #       end
       #   end
       #
       #   person = Person.new
@@ -131,10 +129,9 @@ module ActiveModel
       #     define_attribute_methods :name
       #
       #     private
-      #
-      #     def attribute_short?(attr)
-      #       send(attr).length < 5
-      #     end
+      #       def attribute_short?(attr)
+      #         send(attr).length < 5
+      #       end
       #   end
       #
       #   person = Person.new
@@ -167,10 +164,9 @@ module ActiveModel
       #     define_attribute_methods :name
       #
       #     private
-      #
-      #     def reset_attribute_to_default!(attr)
-      #       send("#{attr}=", 'Default Name')
-      #     end
+      #       def reset_attribute_to_default!(attr)
+      #         send("#{attr}=", 'Default Name')
+      #       end
       #   end
       #
       #   person = Person.new
@@ -194,10 +190,9 @@ module ActiveModel
       #     alias_attribute :nickname, :name
       #
       #     private
-      #
-      #     def attribute_short?(attr)
-      #       send(attr).length < 5
-      #     end
+      #       def attribute_short?(attr)
+      #         send(attr).length < 5
+      #       end
       #   end
       #
       #   person = Person.new
@@ -268,10 +263,9 @@ module ActiveModel
       #     define_attribute_methods :name, :age, :address
       #
       #     private
-      #
-      #     def clear_attribute(attr)
-      #       send("#{attr}=", nil)
-      #     end
+      #       def clear_attribute(attr)
+      #         send("#{attr}=", nil)
+      #       end
       #   end
       def define_attribute_methods(*attr_names)
         ActiveSupport::CodeGenerator.batch(generated_attribute_methods, __FILE__, __LINE__) do |owner|
@@ -298,10 +292,9 @@ module ActiveModel
       #     define_attribute_method :name
       #
       #     private
-      #
-      #     def attribute_short?(attr)
-      #       send(attr).length < 5
-      #     end
+      #       def attribute_short?(attr)
+      #         send(attr).length < 5
+      #       end
       #   end
       #
       #   person = Person.new
@@ -337,10 +330,9 @@ module ActiveModel
       #     define_attribute_method :name
       #
       #     private
-      #
-      #     def attribute_short?(attr)
-      #       send(attr).length < 5
-      #     end
+      #       def attribute_short?(attr)
+      #         send(attr).length < 5
+      #       end
       #   end
       #
       #   person = Person.new
@@ -398,7 +390,7 @@ module ActiveModel
             mangled_name = "__temp__#{name.unpack1("h*")}"
           end
 
-          code_generator.define_cached_method(name, as: mangled_name, namespace: namespace) do |batch|
+          code_generator.define_cached_method(name, as: mangled_name, namespace: :"#{namespace}_#{proxy_target}") do |batch|
             call_args.map!(&:inspect)
             call_args << parameters if parameters
 
@@ -487,43 +479,6 @@ module ActiveModel
       else
         !matched_attribute_method(method.to_s).nil?
       end
-    end
-
-    # Returns a hash of attributes for the given keys. Provides the pattern
-    # matching interface for matching against hash patterns. For example:
-    #
-    #   class Person
-    #     include ActiveModel::AttributeMethods
-    #
-    #     attr_accessor :name
-    #     define_attribute_method :name
-    #   end
-    #
-    #   def greeting_for(person)
-    #     case person
-    #     in { name: "Mary" }
-    #       "Welcome back, Mary!"
-    #     in { name: }
-    #       "Welcome, stranger!"
-    #     end
-    #   end
-    #
-    #   person = Person.new
-    #   person.name = "Mary"
-    #   greeting_for(person) # => "Welcome back, Mary!"
-    #
-    #   person = Person.new
-    #   person.name = "Bob"
-    #   greeting_for(person) # => "Welcome, stranger!"
-    def deconstruct_keys(keys)
-      deconstructed = {}
-
-      keys.each do |key|
-        string_key = key.to_s
-        deconstructed[key] = _read_attribute(string_key) if attribute_method?(string_key)
-      end
-
-      deconstructed
     end
 
     private

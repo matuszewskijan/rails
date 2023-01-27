@@ -1157,6 +1157,9 @@ class RelationTest < ActiveRecord::TestCase
 
       assert posts.any? { |p| p.id > 0 }
       assert_not posts.any? { |p| p.id <= 0 }
+
+      assert posts.any?(Post)
+      assert_not posts.any?(Comment)
     end
 
     assert_predicate posts, :loaded?
@@ -1196,6 +1199,9 @@ class RelationTest < ActiveRecord::TestCase
     assert_queries(1) do
       assert posts.none? { |p| p.id < 0 }
       assert_not posts.none? { |p| p.id == 1 }
+
+      assert posts.none?(Comment)
+      assert_not posts.none?(Post)
     end
 
     assert_predicate posts, :loaded?
@@ -1212,6 +1218,9 @@ class RelationTest < ActiveRecord::TestCase
     assert_queries(1) do
       assert_not posts.one? { |p| p.id < 3 }
       assert posts.one? { |p| p.id == 1 }
+
+      assert_not posts.one?(Post)
+      assert_not posts.one?(Comment)
     end
 
     assert_predicate posts, :loaded?
@@ -1481,6 +1490,27 @@ class RelationTest < ActiveRecord::TestCase
     assert_predicate bird, :persisted?
 
     assert_equal bird, Bird.find_or_create_by(name: "bob")
+  end
+
+  def test_find_or_create_by_race_condition
+    assert_nil Subscriber.find_by(nick: "bob")
+
+    bob = Subscriber.create!(nick: "bob")
+    relation = Subscriber.all
+
+    results = [nil, bob]
+    find_by_mock = -> (*) do
+      assert_not_predicate results, :empty?
+      results.shift
+    end
+
+    relation.stub(:find_by, find_by_mock) do
+      relation.stub(:find_by!, find_by_mock) do # create_or_find_by always call find_by! on retry
+        assert_equal bob, relation.find_or_create_by(nick: "bob")
+      end
+    end
+
+    assert_predicate results, :empty?
   end
 
   def test_find_or_create_by_with_create_with
@@ -2371,7 +2401,7 @@ class RelationTest < ActiveRecord::TestCase
     assert_empty authors
   end
 
-  (ActiveRecord::Relation::MULTI_VALUE_METHODS - [:extending]).each do |method|
+  (ActiveRecord::Relation::MULTI_VALUE_METHODS - [:extending, :with]).each do |method|
     test "#{method} with blank value" do
       authors = Author.public_send(method, [""])
       assert_empty authors.public_send(:"#{method}_values")

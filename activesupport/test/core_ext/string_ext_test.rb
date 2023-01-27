@@ -90,6 +90,18 @@ class StringInflectionsTest < ActiveSupport::TestCase
     end
   end
 
+  def test_downcase_first
+    assert_equal "try again", "Try again".downcase_first
+  end
+
+  def test_downcase_first_with_one_char
+    assert_equal "t", "T".downcase_first
+  end
+
+  def test_downcase_first_with_empty_string
+    assert_equal "", "".downcase_first
+  end
+
   def test_upcase_first
     assert_equal "What a Lovely Day", "what a Lovely Day".upcase_first
   end
@@ -824,7 +836,7 @@ class OutputSafetyTest < ActiveSupport::TestCase
 
   test "Adding an object not responding to `#to_str` to a safe string is deprecated" do
     string = @string.html_safe
-    assert_deprecated("Implicit conversion of #{@to_s_object.class} into String by ActiveSupport::SafeBuffer is deprecated") do
+    assert_deprecated("Implicit conversion of #{@to_s_object.class} into String by ActiveSupport::SafeBuffer is deprecated", ActiveSupport.deprecator) do
       string << @to_s_object
     end
     assert_equal "helloto_s", string
@@ -999,6 +1011,12 @@ class OutputSafetyTest < ActiveSupport::TestCase
 
     assert_equal "<b>oo", string
     assert_predicate string, :html_safe?
+
+    string = "foo".html_safe
+    string[0, 2] = "<b>".html_safe
+
+    assert_equal "<b>o", string
+    assert_predicate string, :html_safe?
   end
 
   test "Replacing index of safe with unsafe yields escaped safe" do
@@ -1006,6 +1024,12 @@ class OutputSafetyTest < ActiveSupport::TestCase
     string[0] = "<b>"
 
     assert_equal "&lt;b&gt;oo", string
+    assert_predicate string, :html_safe?
+
+    string = "foo".html_safe
+    string[1, 1] = "<b>"
+
+    assert_equal "f&lt;b&gt;o", string
     assert_predicate string, :html_safe?
   end
 
@@ -1054,6 +1078,7 @@ class OutputSafetyTest < ActiveSupport::TestCase
     unsafe_char = ">"
     safe_char = "Á"
     safe_char_after_start = "3"
+    starting_with_dash = "-foo"
 
     assert_equal "_", ERB::Util.xml_name_escape(unsafe_char)
     assert_equal "_#{safe_char}", ERB::Util.xml_name_escape(unsafe_char + safe_char)
@@ -1074,6 +1099,8 @@ class OutputSafetyTest < ActiveSupport::TestCase
     common_dangerous_chars = "&<>\"' %*+,/;=^|"
     assert_equal "_" * common_dangerous_chars.size,
                  ERB::Util.xml_name_escape(common_dangerous_chars)
+
+    assert_equal "_foo", ERB::Util.xml_name_escape(starting_with_dash)
   end
 end
 

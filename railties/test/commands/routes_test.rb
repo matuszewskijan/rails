@@ -84,6 +84,41 @@ rails_blob_representation_proxy GET  /rails/active_storage/representations/proxy
     MESSAGE
   end
 
+  test "rails routes with matching path" do
+    app_file "config/routes.rb", <<-RUBY
+      Rails.application.routes.draw do
+        resources :photos
+        get '/cart', to: 'cart#show'
+        post '/cart', to: 'cart#create'
+        get '/basketballs', to: 'basketball#index'
+      end
+    RUBY
+
+    assert_equal <<~MESSAGE, run_routes_command([ "-g", "/cart" ])
+    Prefix Verb URI Pattern     Controller#Action
+      cart GET  /cart(.:format) cart#show
+           POST /cart(.:format) cart#create
+    MESSAGE
+
+    assert_equal <<~MESSAGE, run_routes_command([ "-g", "basketballs" ])
+           Prefix Verb URI Pattern            Controller#Action
+      basketballs GET  /basketballs(.:format) basketball#index
+    MESSAGE
+
+    assert_equal <<~MESSAGE, run_routes_command([ "-g", "/photos/7" ])
+    Prefix Verb   URI Pattern           Controller#Action
+     photo GET    /photos/:id(.:format) photos#show
+           PATCH  /photos/:id(.:format) photos#update
+           PUT    /photos/:id(.:format) photos#update
+           DELETE /photos/:id(.:format) photos#destroy
+    MESSAGE
+
+    assert_equal <<~MESSAGE, run_routes_command([ "-g", "/cats" ])
+    No routes were found for this grep pattern.
+    For more information about routes, see the Rails guide: https://guides.rubyonrails.org/routing.html.
+    MESSAGE
+  end
+
   test "rails routes with controller search key" do
     app_file "config/routes.rb", <<-RUBY
       Rails.application.routes.draw do
@@ -251,7 +286,7 @@ rails_conductor_inbound_email_incinerate POST /rails/conductor/action_mailbox/:i
       URI               | /rails/conductor/action_mailbox/inbound_emails(.:format)
       Controller#Action | rails/conductor/action_mailbox/inbound_emails#index
       --[ Route 9 ]--------------
-      Prefix            | 
+      Prefix            |#{" "}
       Verb              | POST
       URI               | /rails/conductor/action_mailbox/inbound_emails(.:format)
       Controller#Action | rails/conductor/action_mailbox/inbound_emails#create
@@ -296,7 +331,7 @@ rails_conductor_inbound_email_incinerate POST /rails/conductor/action_mailbox/:i
       URI               | /rails/active_storage/blobs/proxy/:signed_id/*filename(.:format)
       Controller#Action | active_storage/blobs/proxy#show
       --[ Route 18 ]-------------
-      Prefix            | 
+      Prefix            |#{" "}
       Verb              | GET
       URI               | /rails/active_storage/blobs/:signed_id/*filename(.:format)
       Controller#Action | active_storage/blobs/redirect#show
@@ -311,7 +346,7 @@ rails_conductor_inbound_email_incinerate POST /rails/conductor/action_mailbox/:i
       URI               | /rails/active_storage/representations/proxy/:signed_blob_id/:variation_key/*filename(.:format)
       Controller#Action | active_storage/representations/proxy#show
       --[ Route 21 ]-------------
-      Prefix            | 
+      Prefix            |#{" "}
       Verb              | GET
       URI               | /rails/active_storage/representations/:signed_blob_id/:variation_key/*filename(.:format)
       Controller#Action | active_storage/representations/redirect#show
@@ -332,6 +367,17 @@ rails_conductor_inbound_email_incinerate POST /rails/conductor/action_mailbox/:i
       Controller#Action | active_storage/direct_uploads#create
     MESSAGE
     # rubocop:enable Layout/TrailingWhitespace
+  end
+
+  test "rails routes with unused option" do
+    app_file "config/routes.rb", <<-RUBY
+      Rails.application.routes.draw do
+      end
+    RUBY
+
+    output = run_routes_command([ "--unused" ])
+
+    assert_equal(output, "No unused routes found.\n")
   end
 
   private

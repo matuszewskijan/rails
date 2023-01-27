@@ -8,12 +8,11 @@ class Mysql2AdapterTest < ActiveRecord::Mysql2TestCase
 
   def setup
     @conn = ActiveRecord::Base.connection
-    @connection_handler = ActiveRecord::Base.connection_handler
   end
 
   def test_connection_error
     assert_raises ActiveRecord::ConnectionNotEstablished do
-      ActiveRecord::Base.mysql2_connection(socket: File::NULL)
+      ActiveRecord::Base.mysql2_connection(socket: File::NULL, prepared_statements: false).connect!
     end
   end
 
@@ -53,7 +52,7 @@ class Mysql2AdapterTest < ActiveRecord::Mysql2TestCase
       end
     end.new
 
-    assert_deprecated do
+    assert_deprecated(ActiveRecord.deprecator) do
       ActiveRecord::ConnectionAdapters::Mysql2Adapter.new(
         fake_connection,
         ActiveRecord::Base.logger,
@@ -62,7 +61,7 @@ class Mysql2AdapterTest < ActiveRecord::Mysql2TestCase
       )
     end
 
-    assert_not_deprecated do
+    assert_not_deprecated(ActiveRecord.deprecator) do
       ActiveRecord::ConnectionAdapters::Mysql2Adapter.new(
         fake_connection,
         ActiveRecord::Base.logger,
@@ -70,6 +69,31 @@ class Mysql2AdapterTest < ActiveRecord::Mysql2TestCase
         { socket: File::NULL, prepared_statements: false }
       )
     end
+  end
+
+  def test_mysql2_default_prepared_statements
+    fake_connection = Class.new do
+      def query_options
+        {}
+      end
+
+      def query(*)
+      end
+
+      def close
+      end
+    end.new
+
+    adapter = ActiveRecord.deprecator.silence do
+      ActiveRecord::ConnectionAdapters::Mysql2Adapter.new(
+        fake_connection,
+        ActiveRecord::Base.logger,
+        nil,
+        { socket: File::NULL }
+      )
+    end
+
+    assert_equal false, adapter.prepared_statements
   end
 
   def test_exec_query_nothing_raises_with_no_result_queries
@@ -287,6 +311,14 @@ class Mysql2AdapterTest < ActiveRecord::Mysql2TestCase
       raw_conn.stub(:query, ->(_sql) { raise Mysql2::Error.new("fail", 50700, ActiveRecord::ConnectionAdapters::AbstractMysqlAdapter::ER_QUERY_TIMEOUT) }) {
         @conn.execute("SELECT 1")
       }
+    end
+  end
+
+  def test_database_timezone_changes_synced_to_connection
+    with_timezone_config default: :local do
+      assert_changes(-> { @conn.raw_connection.query_options[:database_timezone] }, from: :utc, to: :local) do
+        @conn.execute("SELECT 1")
+      end
     end
   end
 
