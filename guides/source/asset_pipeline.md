@@ -103,15 +103,6 @@ Fingerprinting is enabled by default for both the development and production
 environments. You can enable or disable it in your configuration through the
 [`config.assets.digest`][] option.
 
-Making Your Library or Gem a Pre-Processor
-------------------------------------------
-
-Sprockets uses Processors, Transformers, Compressors, and Exporters to extend
-Sprockets functionality. Have a look at
-[Extending Sprockets](https://github.com/rails/sprockets/blob/master/guides/extending_sprockets.md)
-to learn more. Here we registered a preprocessor to add a comment to the end
-of text/css (`.css`) files.
-
 ### What are Import Maps and Why Should I Care?
 
 Import maps let you import JavaScript modules using logical names that map to versioned/digested files – directly from the browser. So you can build modern JavaScript applications using JavaScript libraries made for ES modules (ESM) without the need for transpiling or bundling.
@@ -1086,8 +1077,6 @@ Webpacker was the default JavaScript pre-processor and bundler for Rails 5 and 6
 Unlike other libraries in this list `webpacker`/`shakapacker` is completely independent of Sprockets and could process both JavaScript and CSS files. Read the [Webpacker guide](https://guides.rubyonrails.org/webpacker.html) to learn more.
 
 NOTE: Read the [Comparison with Webpacker](https://github.com/rails/jsbundling-rails/blob/main/docs/comparison_with_webpacker.md) document to understand the differences between `jsbundling-rails` and `webpacker`/`shakapacker`.
-
-***
 
 ### [cssbundling-rails](https://github.com/rails/cssbundling-rails)
 
